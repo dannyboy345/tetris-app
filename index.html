@@ -61,7 +61,7 @@
       function show(msg){ banner.textContent = msg; banner.classList.add('show'); clearTimeout(show.t); show.t=setTimeout(()=>banner.classList.remove('show'), 900); }
       function reset(){ board = makeBoard(); piece = randPiece(); score=0; lines=0; level=1; dropInterval=800; paused=false; gameOver=false; updateUI(); }
       function updateUI(){ $('score').textContent=score; $('lines').textContent=lines; $('level').textContent=level; }
-      function collide(b,p){ return p.matrix.some((row,y)=>row.some((v,x)=> v && (b[p.y+y] && b[p.y+y][p.x+x] !== 0))); }
+      function collide(b,p){ return p.matrix.some((row,y)=>row.some((v,x)=>{ if(!v)return false; const ny=p.y+y,nx=p.x+x; if(nx<0||nx>=COLS||ny>=ROWS)return true; if(ny<0)return false; return b[ny][nx]!==0; })); }
       function merge(){ piece.matrix.forEach((row,y)=>row.forEach((v,x)=>{ if(v) board[piece.y+y][piece.x+x]=v; })); }
       function clearLines(){ let cleared=0; for(let y=ROWS-1;y>=0;y--){ if(board[y].every(Boolean)){ board.splice(y,1); board.unshift(Array(COLS).fill(0)); cleared++; y++; } } if(cleared){ lines += cleared; score += [0,100,300,500,800][cleared]*level; level = 1 + Math.floor(lines/10); dropInterval = Math.max(120, 800 - (level-1)*60); updateUI(); } }
       function spawn(){ piece = randPiece(); if(collide(board,piece)){ gameOver=true; show('Game over'); } }
