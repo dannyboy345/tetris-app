@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tetris</title>
+    <style>
+      :root { --bg:#0b1020; --panel:#11182e; --grid:#1f2a4a; --text:#e8eeff; }
+      body { margin:0; min-height:100vh; display:grid; place-items:center; background:radial-gradient(circle at top, #16213f, var(--bg)); color:var(--text); font-family:system-ui, sans-serif; }
+      .app { display:grid; grid-template-columns:auto 220px; gap:24px; align-items:start; padding:24px; }
+      canvas { background:#070b16; border:1px solid #334; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+      .panel { width:220px; background:rgba(17,24,46,.9); border:1px solid #223; border-radius:16px; padding:16px; }
+      h1 { margin:0 0 12px; font-size:28px; }
+      .stat { display:flex; justify-content:space-between; margin:8px 0; font-size:14px; opacity:.95; }
+      .controls { margin-top:12px; font-size:13px; line-height:1.55; color:#bdc8ef; }
+      .btn { width:100%; margin-top:12px; padding:10px 12px; border:0; border-radius:10px; background:#4b73ff; color:white; font-weight:700; cursor:pointer; }
+      .btn:hover { filter:brightness(1.05); }
+      .tiny { font-size:12px; opacity:.75; margin-top:10px; }
+      .overlay { position:fixed; inset:0; display:grid; place-items:center; pointer-events:none; }
+      .banner { background:rgba(5,10,20,.75); border:1px solid #3a4c84; padding:12px 18px; border-radius:12px; font-weight:700; opacity:0; transition:opacity .2s; }
+      .banner.show { opacity:1; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <canvas id="game" width="300" height="600"></canvas>
+      <div class="panel">
+        <h1>Tetris</h1>
+        <div class="stat"><span>Score</span><strong id="score">0</strong></div>
+        <div class="stat"><span>Lines</span><strong id="lines">0</strong></div>
+        <div class="stat"><span>Level</span><strong id="level">1</strong></div>
+        <button class="btn" id="restart">Restart</button>
+        <div class="controls">
+          <div><strong>Controls</strong></div>
+          <div>← → move</div>
+          <div>↓ soft drop</div>
+          <div>↑ rotate</div>
+          <div>Space hard drop</div>
+          <div>P pause</div>
+        </div>
+        <div class="tiny">Vanilla JS. No build step.</div>
+      </div>
+    </div>
+    <div class="overlay"><div class="banner" id="banner"></div></div>
+    <script>
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const COLS = 10, ROWS = 20, SIZE = 30;
+      const COLORS = [null,'#00e5ff','#ffd54f','#b388ff','#69f0ae','#ff8a80','#82b1ff','#ffab40'];
+      const SHAPES = {
+        I:[[1,1,1,1]], O:[[2,2],[2,2]], T:[[0,3,0],[3,3,3]], S:[[0,4,4],[4,4,0]], Z:[[5,5,0],[0,5,5]], J:[[6,0,0],[6,6,6]], L:[[0,0,7],[7,7,7]]
+      };
+      const randPiece = () => {
+        const keys = Object.keys(SHAPES); const t = keys[(Math.random()*keys.length)|0];
+        return { matrix: SHAPES[t].map(r=>r.slice()), x: 3, y: 0, t };
+      };
+      const makeBoard = () => Array.from({length: ROWS}, () => Array(COLS).fill(0));
+      let board, piece, nextDrop = 0, dropInterval = 800, score=0, lines=0, level=1, paused=false, gameOver=false;
+      const $ = id => document.getElementById(id);
+      const banner = $('banner');
+      function show(msg){ banner.textContent = msg; banner.classList.add('show'); clearTimeout(show.t); show.t=setTimeout(()=>banner.classList.remove('show'), 900); }
+      function reset(){ board = makeBoard(); piece = randPiece(); score=0; lines=0; level=1; dropInterval=800; paused=false; gameOver=false; updateUI(); }
+      function updateUI(){ $('score').textContent=score; $('lines').textContent=lines; $('level').textContent=level; }
+      function collide(b,p){ return p.matrix.some((row,y)=>row.some((v,x)=> v && (b[p.y+y] && b[p.y+y][p.x+x] !== 0))); }
+      function merge(){ piece.matrix.forEach((row,y)=>row.forEach((v,x)=>{ if(v) board[piece.y+y][piece.x+x]=v; })); }
+      function clearLines(){ let cleared=0; for(let y=ROWS-1;y>=0;y--){ if(board[y].every(Boolean)){ board.splice(y,1); board.unshift(Array(COLS).fill(0)); cleared++; y++; } } if(cleared){ lines += cleared; score += [0,100,300,500,800][cleared]*level; level = 1 + Math.floor(lines/10); dropInterval = Math.max(120, 800 - (level-1)*60); updateUI(); } }
+      function spawn(){ piece = randPiece(); if(collide(board,piece)){ gameOver=true; show('Game over'); } }
+      function rotate(m){ return m[0].map((_,i)=>m.map(r=>r[i]).reverse()); }
+      function move(dx){ piece.x += dx; if(collide(board,piece)) piece.x -= dx; }
+      function softDrop(){ piece.y++; if(collide(board,piece)){ piece.y--; merge(); clearLines(); spawn(); } else score += 1; updateUI(); }
+      function hardDrop(){ let n=0; while(!collide(board,{...piece, y: piece.y + 1})) { piece.y++; n++; } score += n*2; merge(); clearLines(); spawn(); updateUI(); }
+      function drawCell(x,y,v,ghost=false){ ctx.fillStyle = ghost ? 'rgba(255,255,255,.12)' : COLORS[v]; ctx.fillRect(x*SIZE, y*SIZE, SIZE, SIZE); ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.strokeRect(x*SIZE, y*SIZE, SIZE, SIZE); }
+      function draw(){ ctx.clearRect(0,0,canvas.width,canvas.height); board.forEach((r,y)=>r.forEach((v,x)=>v&&drawCell(x,y,v))); if(!gameOver){ const ghost = {...piece, y: piece.y}; while(!collide(board,{...ghost, y:ghost.y+1})) ghost.y++; piece.matrix.forEach((row,y)=>row.forEach((v,x)=>{ if(v) drawCell(piece.x+x,piece.y+y,v); })); piece.matrix.forEach((row,y)=>row.forEach((v,x)=>{ if(v) drawCell(piece.x+x,ghost.y+y,v,true); })); } if(paused && !gameOver){ ctx.fillStyle='rgba(0,0,0,.55)'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.fillStyle='#fff'; ctx.font='bold 30px system-ui'; ctx.textAlign='center'; ctx.fillText('Paused', canvas.width/2, canvas.height/2); } if(gameOver){ ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.fillStyle='#fff'; ctx.font='bold 28px system-ui'; ctx.textAlign='center'; ctx.fillText('Game Over', canvas.width/2, canvas.height/2); } }
+      function loop(ts=0){ if(!paused && !gameOver && ts-nextDrop>dropInterval){ softDrop(); nextDrop=ts; } draw(); requestAnimationFrame(loop); }
+      document.addEventListener('keydown', e => {
+        if(e.key==='p' || e.key==='P'){ paused=!paused; show(paused?'Paused':'Resumed'); return; }
+        if(paused || gameOver) return;
+        if(e.key==='ArrowLeft') move(-1);
+        else if(e.key==='ArrowRight') move(1);
+        else if(e.key==='ArrowDown') softDrop();
+        else if(e.key==='ArrowUp'){ const rotated = rotate(piece.matrix); const old = piece.matrix; piece.matrix = rotated; let kick = 0; while(collide(board,piece) && kick < 3){ piece.x += kick%2 ? 1 : -1; kick++; } if(collide(board,piece)){ piece.x -= (kick%2 ? 1 : -1); piece.matrix = old; } }
+        else if(e.key===' '){ e.preventDefault(); hardDrop(); }
+      });
+      $('restart').onclick = () => { reset(); show('Restarted'); };
+      reset();
+      loop();
+    </script>
+  </body>
+</html>
